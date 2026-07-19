@@ -42,7 +42,7 @@ if ($mode === 'year') {
 // ---------- รายละเอียดรายการ (ทั้งหมดในช่วงที่เลือก) ----------
 $grand_total = 0;
 $det = $conn->prepare("
-    SELECT d.donation_date, d.receipt_name, m.merit_name, d.amount, d.comment
+    SELECT d.item_code, d.donation_date, d.receipt_name, m.merit_name, d.amount, d.comment
     FROM donation_items d
     LEFT JOIN merits m ON d.merit_id = m.id
     WHERE d.donation_date BETWEEN ? AND ? AND d.is_deleted = 0
@@ -89,9 +89,10 @@ $rows = [];
 $rows[] = [['s' => 'รายละเอียดรายการบริจาค — ' . $period_title]];
 $rows[] = [['s' => 'ช่วงวันที่'], ['s' => $start_date . '  ถึง  ' . $end_date]];
 $rows[] = [['s' => '']];
-$rows[] = [['s' => 'วันที่'], ['s' => 'ชื่อบนใบโม'], ['s' => 'ประเภทบุญ'], ['s' => 'จำนวนเงิน (เยน)'], ['s' => 'หมายเหตุ']];
+$rows[] = [['s' => 'รหัสรายการ'], ['s' => 'วันที่'], ['s' => 'ชื่อบนใบโม'], ['s' => 'ประเภทบุญ'], ['s' => 'จำนวนเงิน (เยน)'], ['s' => 'หมายเหตุ']];
 foreach ($details as $d) {
     $rows[] = [
+        ['s' => $d['item_code']],
         ['s' => $d['donation_date']],
         ['s' => $d['receipt_name']],
         ['s' => $d['merit_name']],
@@ -102,7 +103,7 @@ foreach ($details as $d) {
 if (empty($details)) {
     $rows[] = [['s' => 'ไม่มีข้อมูลในช่วงเวลานี้']];
 } else {
-    $rows[] = [['s' => 'รวมทั้งหมด'], ['s' => ''], ['s' => ''], ['n' => (float)$grand_total], ['s' => '']];
+    $rows[] = [['s' => 'รวมทั้งหมด'], ['s' => ''], ['s' => ''], ['s' => ''], ['n' => (float)$grand_total], ['s' => '']];
 }
 
 $sheet = build_sheet($rows);

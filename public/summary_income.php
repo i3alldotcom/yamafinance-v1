@@ -90,7 +90,7 @@ $count_stmt->close();
 $total_pages = ceil($total_detail / $limit);
 
 $det_stmt = $conn->prepare("
-    SELECT d.donation_date, d.receipt_name, m.merit_name, d.amount, d.comment
+    SELECT d.item_code, d.donation_date, d.receipt_name, m.merit_name, d.amount, d.comment
     FROM donation_items d
     LEFT JOIN merits m ON d.merit_id = m.id
     WHERE d.donation_date BETWEEN ? AND ? AND d.is_deleted = 0
@@ -228,6 +228,7 @@ $base_params = http_build_query([
             <table class="table table-bordered table-sm bg-white">
                 <thead class="table-success">
                     <tr>
+                        <th>รหัสรายการ</th>
                         <th>วันที่</th>
                         <th>ชื่อบนใบโม</th>
                         <th>ประเภทบุญ</th>
@@ -238,6 +239,7 @@ $base_params = http_build_query([
                 <tbody>
                     <?php foreach ($details as $d): ?>
                     <tr>
+                        <td><?php echo htmlspecialchars($d['item_code']); ?></td>
                         <td><?php echo htmlspecialchars($d['donation_date']); ?></td>
                         <td><?php echo htmlspecialchars($d['receipt_name']); ?></td>
                         <td><?php echo htmlspecialchars($d['merit_name']); ?></td>
@@ -246,7 +248,7 @@ $base_params = http_build_query([
                     </tr>
                     <?php endforeach; ?>
                     <?php if (empty($details)): ?>
-                    <tr><td colspan="5" class="text-center text-muted">ไม่มีข้อมูลในช่วงเวลานี้</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted">ไม่มีข้อมูลในช่วงเวลานี้</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
