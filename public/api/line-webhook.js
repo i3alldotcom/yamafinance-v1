@@ -87,13 +87,29 @@ module.exports = async function handler(req, res) {
             });
             const gemData = await safeJson(gemRes, 'Gemini');
             let gem = null;
-            if (gemRes.ok && gemData) {
+            if (!gemRes.ok || !gemData) {
+              console.error('Gemini API not ok', gemRes.status);
+            } else {
+              const cand = gemData.candidates && gemData.candidates[0];
+              const finishReason = cand && cand.finishReason;
+              const promptFeedback = gemData.promptFeedback;
+              let txt = '';
+              if (cand && cand.content && cand.content.parts && cand.content.parts[0]) {
+                txt = cand.content.parts[0].text || '';
+              }
+              console.log('Gemini finishReason', finishReason,
+                'promptFeedback', JSON.stringify(promptFeedback),
+                'rawText', txt.slice(0, 400));
+
+              // แกะ markdown fence ถ้ามี (```json ... ```) ก่อน parse
+              let clean = txt.trim();
+              if (clean.indexOf('```') !== -1) {
+                clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
+              }
               try {
-                const cand = gemData.candidates && gemData.candidates[0];
-                const txt = cand && cand.content && cand.content.parts[0].text;
-                gem = txt ? JSON.parse(txt) : null;
+                gem = clean ? JSON.parse(clean) : null;
               } catch (e) {
-                console.error('Gemini parse failed', e);
+                console.error('Gemini parse failed', e.message, 'cleanText', clean.slice(0, 400));
               }
             }
             if (gem) {
