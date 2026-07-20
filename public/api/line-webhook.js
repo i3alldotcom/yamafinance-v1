@@ -74,6 +74,8 @@ module.exports = async function handler(req, res) {
               jpText
             ];
             const userPrompt = promptLines.join('\n');
+            console.log('OpenAI prompt length', userPrompt.length,
+              'preview', userPrompt.slice(0, 300));
 
             const openaiUrl = 'https://api.openai.com/v1/chat/completions';
             const openaiBody = {
@@ -102,7 +104,12 @@ module.exports = async function handler(req, res) {
               if (openaiRes.ok && openaiData) break;
               if (openaiRes.status === 429 && attempt < maxAttempts) {
                 const waitMs = 800 * attempt; // 800ms, 1600ms
-                console.error('OpenAI 429, retry in', waitMs, 'ms (attempt', attempt, ')');
+                const h = openaiRes.headers;
+                console.error('OpenAI 429, retry in', waitMs, 'ms (attempt', attempt, ')',
+                  'ratelimit', h.get('x-ratelimit-remaining-requests'),
+                  'limit', h.get('x-ratelimit-limit-requests'),
+                  'reset', h.get('x-ratelimit-reset-requests'),
+                  'retryAfter', h.get('retry-after'));
                 await new Promise(function (r) { setTimeout(r, waitMs); });
               } else {
                 break;
@@ -110,7 +117,12 @@ module.exports = async function handler(req, res) {
             }
             let gem = null;
             if (!openaiRes.ok || !openaiData) {
-              console.error('OpenAI API not ok', openaiRes.status);
+              const h = openaiRes.headers;
+              console.error('OpenAI API not ok', openaiRes.status,
+                'ratelimit', h.get('x-ratelimit-remaining-requests'),
+                'limit', h.get('x-ratelimit-limit-requests'),
+                'reset', h.get('x-ratelimit-reset-requests'),
+                'retryAfter', h.get('retry-after'));
             } else {
               const choice = openaiData.choices && openaiData.choices[0];
               const finishReason = choice && choice.finishReason;
