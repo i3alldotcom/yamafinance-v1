@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
     if (message && message.type === 'image') {
       const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
       const visionKey = process.env.GOOGLE_VISION_API_KEY;
-      const geminiKey = process.env.GEMINI_API_KEY;
+      const openaiKey = process.env.OPENAI_API_KEY;
 
       try {
         const lineUrl = 'https://api-data.line.me/v2/bot/message/' + message.id + '/content';
@@ -59,7 +59,7 @@ module.exports = async function handler(req, res) {
 
           body.ocrText = jpText;
 
-          if (jpText && geminiKey) {
+          if (jpText && openaiKey) {
             const promptLines = [
               'คุณคือผู้ช่วยบัญชี ต่อไปนี้คือข้อความจากบิลที่อ่านด้วย OCR (อาจเป็นภาษาญี่ปุ่นหรือภาษาอื่น)',
               'กรุณาตอบกลับเฉพาะ JSON รูปแบบนี้ โดยไม่ต้องอธิบายเพิ่ม:',
@@ -73,47 +73,52 @@ module.exports = async function handler(req, res) {
               'ข้อความจากบิล:',
               jpText
             ];
-            const prompt = promptLines.join('\n');
+            const userPrompt = promptLines.join('\n');
 
-            const gemUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey;
-            const gemBody = {
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: 'application/json' }
+            const openaiUrl = 'https://api.openai.com/v1/chat/completions';
+            const openaiBody = {
+              model: 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: 'คุณคือผู้ช่วยบัญชีที่แปลบิลและสกัดข้อมูลเป็น JSON เท่านั้น' },
+                { role: 'user', content: userPrompt }
+              ],
+              response_format: { type: 'json_object' },
+              temperature: 0.2
             };
-            // เรียก Gemini พร้อม retry เมื่อเจอ 429 (quota/rate limit)
-            let gemRes = null;
-            let gemData = null;
+            // เรียก OpenAI พร้อม retry เมื่อเจอ 429 (rate limit)
+            let openaiRes = null;
+            let openaiData = null;
             const maxAttempts = 3;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-              gemRes = await fetch(gemUrl, {
+              openaiRes = await fetch(openaiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(gemBody)
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + openaiKey
+                },
+                body: JSON.stringify(openaiBody)
               });
-              gemData = await safeJson(gemRes, 'Gemini');
-              if (gemRes.ok && gemData) break;
-              if (gemRes.status === 429 && attempt < maxAttempts) {
+              openaiData = await safeJson(openaiRes, 'OpenAI');
+              if (openaiRes.ok && openaiData) break;
+              if (openaiRes.status === 429 && attempt < maxAttempts) {
                 const waitMs = 800 * attempt; // 800ms, 1600ms
-                console.error('Gemini 429, retry in', waitMs, 'ms (attempt', attempt, ')');
+                console.error('OpenAI 429, retry in', waitMs, 'ms (attempt', attempt, ')');
                 await new Promise(function (r) { setTimeout(r, waitMs); });
               } else {
                 break;
               }
             }
             let gem = null;
-            if (!gemRes.ok || !gemData) {
-              console.error('Gemini API not ok', gemRes.status);
+            if (!openaiRes.ok || !openaiData) {
+              console.error('OpenAI API not ok', openaiRes.status);
             } else {
-              const cand = gemData.candidates && gemData.candidates[0];
-              const finishReason = cand && cand.finishReason;
-              const promptFeedback = gemData.promptFeedback;
+              const choice = openaiData.choices && openaiData.choices[0];
+              const finishReason = choice && choice.finishReason;
               let txt = '';
-              if (cand && cand.content && cand.content.parts && cand.content.parts[0]) {
-                txt = cand.content.parts[0].text || '';
+              if (choice && choice.message && choice.message.content) {
+                txt = choice.message.content || '';
               }
-              console.log('Gemini finishReason', finishReason,
-                'promptFeedback', JSON.stringify(promptFeedback),
-                'rawText', txt.slice(0, 400));
+              console.log('OpenAI finishReason', finishReason, 'rawText', txt.slice(0, 400));
 
               // แกะ markdown fence ถ้ามี (```json ... ```) ก่อน parse
               let clean = txt.trim();
@@ -123,7 +128,7 @@ module.exports = async function handler(req, res) {
               try {
                 gem = clean ? JSON.parse(clean) : null;
               } catch (e) {
-                console.error('Gemini parse failed', e.message, 'cleanText', clean.slice(0, 400));
+                console.error('OpenAI parse failed', e.message, 'cleanText', clean.slice(0, 400));
               }
             }
             if (gem) {
