@@ -1,21 +1,20 @@
- export default async function handler(req, res) {
+export default async function handler(req, res) {
     try {
       const body = req.body;
       const event = body && body.events ? body.events[0] : null;
       const message = event ? event.message : null;
 
-      if (message && message.type === 'image') {
-        const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+      if (message && message.type === 'image') {        const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
         const apiKey = process.env.GOOGLE_VISION_API_KEY;
-        try {          // 1) โหลดรูปจาก LINE
-          const msgRes = await fetch(            `https://api-data.line.me/v2/bot/message/${message.id}/content`,
+        try {
+          const msgRes = await fetch(
+            `https://api-data.line.me/v2/bot/message/${message.id}/content`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
           if (msgRes.ok) {
             const buf = Buffer.from(await msgRes.arrayBuffer());
             const base64 = buf.toString('base64');
 
-            // 2) เรียก Vision แบบ REST (ไม่ต้องติดตั้ง library)
             const visionRes = await fetch(
               `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
               {
@@ -30,10 +29,17 @@
               }
             );
             const visionData = await visionRes.json();
-            const ann = visionData.responses && visionData.responses[0] &&
+            if (!visionRes.ok) {
+              console.error('Vision API error', visionRes.status, JSON.stringify(visionData));
+            } else {
+              const ann = visionData.responses && visionData.responses[0] &&
   visionData.responses[0].fullTextAnnotation;
-            body.ocrText = ann ? ann.text : '';
-            body.imageBase64 = base64;
+              body.ocrText = ann ? ann.text : '';
+              body.imageBase64 = base64;
+              if (!ann) console.error('Vision: no text found in image');
+            }
+          } else {
+            console.error('LINE download not ok', msgRes.status);
           }
         } catch (e) {
           console.error('OCR/Line failed:', e);
