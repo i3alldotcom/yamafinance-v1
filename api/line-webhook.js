@@ -4,7 +4,8 @@ export default async function handler(req, res) {
       const message = event ? event.message : null;
 
       if (message && message.type === 'image') {
-        const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;        const visionKey = process.env.GOOGLE_VISION_API_KEY;
+        const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+        const visionKey = process.env.GOOGLE_VISION_API_KEY;
         const geminiKey = process.env.GEMINI_API_KEY;        try {
           const msgRes = await fetch(
             `https://api-data.line.me/v2/bot/message/${message.id}/content`,
@@ -38,8 +39,8 @@ export default async function handler(req, res) {
 
             // 2) แปลไทย + สรุป ด้วย Gemini
             if (jpText && geminiKey) {
-              const prompt = `คุณคือผู้ช่วยบัญชี ต่อไปนี้คือข้อความจากบิลภาษาญี่ปุ่นที่อ่านด้วย OCR กรุณาตอบกลับเฉพาะ JSON:
-  {"thai_text":"แปลภาษาไทยทั้งหมด","category_th":"สรุปสั้นๆ บิลนี้คือค่าอะไร (เช่น ค่าไฟฟ้า, ค่าน้ำ,
+              const prompt = `คุณคือผู้ช่วยบัญชี ต่อไปนี้คือข้อความจากบิลภาษาญี่ปุ่นหรือภาษาอื่นที่ไม่ใช่ภาษาไทยที่อ่านด้วย OCR กรุณาตอบกลับเฉพาะ JSON:
+  {"thai_text":"แปลภาษาไทยทั้งหมด แต่ถ้าบิลเป็นภาษาไทยอยู่แล้วให้สรุปได้เลย","category_th":"สรุปสั้นๆ บิลนี้คือค่าอะไร (เช่น ค่าไฟฟ้า, ค่าน้ำ,
   อินเทอร์เน็ต)","amount":"จำนวนเงินตัวเลขอย่างเดียว ถ้าไม่มีให้ว่าง","bill_date":"วันที่ในบิล YYYY-MM-DD ถ้าไม่มีให้ว่าง"}
   โดยไม่ต้องอธิบายเพิ่ม:\n\n${jpText}`;
               const gemRes = await fetch(
