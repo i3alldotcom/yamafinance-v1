@@ -109,7 +109,8 @@ module.exports = async function handler(req, res) {
                   'ratelimit', h.get('x-ratelimit-remaining-requests'),
                   'limit', h.get('x-ratelimit-limit-requests'),
                   'reset', h.get('x-ratelimit-reset-requests'),
-                  'retryAfter', h.get('retry-after'));
+                  'retryAfter', h.get('retry-after'),
+                  'body', JSON.stringify(openaiData));
                 await new Promise(function (r) { setTimeout(r, waitMs); });
               } else {
                 break;
@@ -122,7 +123,8 @@ module.exports = async function handler(req, res) {
                 'ratelimit', h.get('x-ratelimit-remaining-requests'),
                 'limit', h.get('x-ratelimit-limit-requests'),
                 'reset', h.get('x-ratelimit-reset-requests'),
-                'retryAfter', h.get('retry-after'));
+                'retryAfter', h.get('retry-after'),
+                'body', JSON.stringify(openaiData));
             } else {
               const choice = openaiData.choices && openaiData.choices[0];
               const finishReason = choice && choice.finishReason;
