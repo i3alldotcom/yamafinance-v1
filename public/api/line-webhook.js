@@ -80,12 +80,26 @@ module.exports = async function handler(req, res) {
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: { responseMimeType: 'application/json' }
             };
-            const gemRes = await fetch(gemUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(gemBody)
-            });
-            const gemData = await safeJson(gemRes, 'Gemini');
+            // เรียก Gemini พร้อม retry เมื่อเจอ 429 (quota/rate limit)
+            let gemRes = null;
+            let gemData = null;
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              gemRes = await fetch(gemUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(gemBody)
+              });
+              gemData = await safeJson(gemRes, 'Gemini');
+              if (gemRes.ok && gemData) break;
+              if (gemRes.status === 429 && attempt < maxAttempts) {
+                const waitMs = 800 * attempt; // 800ms, 1600ms
+                console.error('Gemini 429, retry in', waitMs, 'ms (attempt', attempt, ')');
+                await new Promise(function (r) { setTimeout(r, waitMs); });
+              } else {
+                break;
+              }
+            }
             let gem = null;
             if (!gemRes.ok || !gemData) {
               console.error('Gemini API not ok', gemRes.status);
