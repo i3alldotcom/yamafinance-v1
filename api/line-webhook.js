@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
     if (message && message.type === 'image') {
       const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
       const visionKey = process.env.GOOGLE_VISION_API_KEY;
-      const openaiKey = process.env.OPENAI_API_KEY;
+      const geminiKey = process.env.GEMINI_API_KEY;
 
       try {
         const lineUrl = 'https://api-data.line.me/v2/bot/message/' + message.id + '/content';
@@ -59,7 +59,7 @@ module.exports = async function handler(req, res) {
 
           body.ocrText = jpText;
 
-          if (jpText && openaiKey) {
+          if (jpText && geminiKey) {
             const promptLines = [
               'คุณคือผู้ช่วยบัญชี ต่อไปนี้คือข้อความจากบิลที่อ่านด้วย OCR (อาจเป็นภาษาญี่ปุ่นหรือภาษาอื่น)',
               'กรุณาตอบกลับเฉพาะ JSON รูปแบบนี้ โดยไม่ต้องอธิบายเพิ่ม:',
@@ -74,65 +74,49 @@ module.exports = async function handler(req, res) {
               jpText
             ];
             const userPrompt = promptLines.join('\n');
-            console.log('OpenAI prompt length', userPrompt.length,
+            console.log('Gemini prompt length', userPrompt.length,
               'preview', userPrompt.slice(0, 300));
 
-            const openaiUrl = 'https://api.openai.com/v1/chat/completions';
-            const openaiBody = {
-              model: 'gpt-4o-mini',
-              messages: [
-                { role: 'system', content: 'คุณคือผู้ช่วยบัญชีที่แปลบิลและสกัดข้อมูลเป็น JSON เท่านั้น' },
-                { role: 'user', content: userPrompt }
-              ],
-              response_format: { type: 'json_object' },
-              temperature: 0.2
+            const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey;
+            const geminiBody = {
+              contents: [{ parts: [{ text: userPrompt }] }],
+              generationConfig: { responseMimeType: 'application/json' }
             };
-            // เรียก OpenAI พร้อม retry เมื่อเจอ 429 (rate limit)
-            let openaiRes = null;
-            let openaiData = null;
+            // เรียก Gemini พร้อม retry เมื่อเจอ 429 (rate limit)
+            let gemRes = null;
+            let gemData = null;
             const maxAttempts = 3;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-              openaiRes = await fetch(openaiUrl, {
+              gemRes = await fetch(geminiUrl, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + openaiKey
-                },
-                body: JSON.stringify(openaiBody)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(geminiBody)
               });
-              openaiData = await safeJson(openaiRes, 'OpenAI');
-              if (openaiRes.ok && openaiData) break;
-              if (openaiRes.status === 429 && attempt < maxAttempts) {
+              gemData = await safeJson(gemRes, 'Gemini');
+              if (gemRes.ok && gemData) break;
+              if (gemRes.status === 429 && attempt < maxAttempts) {
                 const waitMs = 800 * attempt; // 800ms, 1600ms
-                const h = openaiRes.headers;
-                console.error('OpenAI 429, retry in', waitMs, 'ms (attempt', attempt, ')',
-                  'ratelimit', h.get('x-ratelimit-remaining-requests'),
-                  'limit', h.get('x-ratelimit-limit-requests'),
-                  'reset', h.get('x-ratelimit-reset-requests'),
-                  'retryAfter', h.get('retry-after'),
-                  'body', JSON.stringify(openaiData));
+                console.error('Gemini 429, retry in', waitMs, 'ms (attempt', attempt, ')',
+                  'retryAfter', gemRes.headers.get('retry-after'),
+                  'body', JSON.stringify(gemData));
                 await new Promise(function (r) { setTimeout(r, waitMs); });
               } else {
                 break;
               }
             }
             let gem = null;
-            if (!openaiRes.ok || !openaiData) {
-              const h = openaiRes.headers;
-              console.error('OpenAI API not ok', openaiRes.status,
-                'ratelimit', h.get('x-ratelimit-remaining-requests'),
-                'limit', h.get('x-ratelimit-limit-requests'),
-                'reset', h.get('x-ratelimit-reset-requests'),
-                'retryAfter', h.get('retry-after'),
-                'body', JSON.stringify(openaiData));
+            if (!gemRes.ok || !gemData) {
+              console.error('Gemini API not ok', gemRes.status,
+                'retryAfter', gemRes.headers.get('retry-after'),
+                'body', JSON.stringify(gemData));
             } else {
-              const choice = openaiData.choices && openaiData.choices[0];
-              const finishReason = choice && choice.finishReason;
+              const cand = gemData.candidates && gemData.candidates[0];
+              const finishReason = cand && cand.finishReason;
               let txt = '';
-              if (choice && choice.message && choice.message.content) {
-                txt = choice.message.content || '';
+              if (cand && cand.content && cand.content.parts && cand.content.parts[0]) {
+                txt = cand.content.parts[0].text || '';
               }
-              console.log('OpenAI finishReason', finishReason, 'rawText', txt.slice(0, 400));
+              console.log('Gemini finishReason', finishReason, 'rawText', txt.slice(0, 400));
 
               // แกะ markdown fence ถ้ามี (```json ... ```) ก่อน parse
               let clean = txt.trim();
@@ -142,7 +126,7 @@ module.exports = async function handler(req, res) {
               try {
                 gem = clean ? JSON.parse(clean) : null;
               } catch (e) {
-                console.error('OpenAI parse failed', e.message, 'cleanText', clean.slice(0, 400));
+                console.error('Gemini parse failed', e.message, 'cleanText', clean.slice(0, 400));
               }
             }
             if (gem) {
