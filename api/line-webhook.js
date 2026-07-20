@@ -24,10 +24,10 @@ module.exports = async function handler(req, res) {
       const geminiKey = process.env.GEMINI_API_KEY;
 
       try {
-        const msgRes = await fetch(
-          'https://api-data.line.me/v2/bot/message/' + message.id + '/content',
-          { headers: { Authorization: 'Bearer ' + token } }
-        );
+        const lineUrl = 'https://api-data.line.me/v2/bot/message/' + message.id + '/content';
+        const msgRes = await fetch(lineUrl, {
+          headers: { Authorization: 'Bearer ' + token }
+        });
 
         if (msgRes.ok) {
           const buf = Buffer.from(await msgRes.arrayBuffer());
@@ -36,23 +36,24 @@ module.exports = async function handler(req, res) {
           body.imageBase64 = base64;
 
           let jpText = '';
-          const visionRes = await fetch(
-            'https://vision.googleapis.com/v1/images:annotate?key=' + visionKey,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }]
-              })
-            }
-          );
-          const visi
+          const visionUrl = 'https://vision.googleapis.com/v1/images:annotate?key=' + visionKey;
+          const visionBody = {
+            requests: [{
+              image: { content: base64 },
+              features: [{ type: 'DOCUMENT_TEXT_DETECTION' }]
+            }]
+          };
+          const visionRes = await fetch(visionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(visionBody)
+          });
+          const visionData = await safeJson(visionRes, 'Vision');
           if (!visionRes.ok || !visionData) {
             console.error('Vision API error', visionRes.status);
           } else {
-            const ann = visionData.responses &&
-                        visionData.responses[0] &&
-                        visionData.responses[0].fullTextAnnotation;
+            const r0 = visionData.responses && visionData.responses[0];
+            const ann = r0 && r0.fullTextAnnotation;
             jpText = ann ? ann.text : '';
           }
 
@@ -74,32 +75,32 @@ module.exports = async function handler(req, res) {
             ];
             const prompt = promptLines.join('\n');
 
-            const gemRes = await fetch(
-              'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: prompt }] }],
-                  generationConfig: { responseMimeType: 'application/json' }
-                })
-              }
-            );
+            const gemUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + geminiKey;
+            const gemBody = {
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseMimeType: 'application/json' }
+            };
+            const gemRes = await fetch(gemUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(gemBody)
+            });
             const gemData = await safeJson(gemRes, 'Gemini');
             let gem = null;
             if (gemRes.ok && gemData) {
               try {
-                const txt = gemData.candidates &&
-                            gemData.candidates[0] &&
-                            gemData.candidates[0].content.parts[0].text;
+                const cand = gemData.candidates && gemData.candidates[0];
+                const txt = cand && cand.content && cand.content.parts[0].text;
                 gem = txt ? JSON.parse(txt) : null;
-              } catch (e) { console.error('Gemini parse failed', e); }
+              } catch (e) {
+                console.error('Gemini parse failed', e);
+              }
             }
             if (gem) {
-              body.ocrText     = gem.thai_text || jpText;
+              body.ocrText = gem.thai_text || jpText;
               body.billSummary = gem.category_th || '';
-              body.amount      = gem.amount || '';
-              body.billDate    = gem.bill_date || '';
+              body.amount = gem.amount || '';
+              body.billDate = gem.bill_date || '';
             }
           }
         } else {
@@ -110,25 +111,19 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const nasRes = await fetch(
-      'http://dmcyamanashi.myqnapcloud.com/yamafinance/public/api/line.php',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-KEY': 'Yama072+Finance@2026' },
-        body: JSON.stringify(body)
-      }
-    );
-    if (!nasRes.ok) { res.status(500).send('NAS failed'); return; }
-    res.status(200).send('OK');
-    const nasRes = await fetch(
-      'http://dmcyamanashi.myqnapcloud.com/yamafinance/public/api/line.php',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-KEY': 'Yama072+Finance@2026' },
-        body: JSON.stringify(body)
-      }
-    );
-    if (!nasRes.ok) { res.status(500).send('NAS failed'); return; }
+    const nasUrl = 'http://dmcyamanashi.myqnapcloud.com/yamafinance/public/api/line.php';
+    const nasRes = await fetch(nasUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': 'Yama072+Finance@2026'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!nasRes.ok) {
+      res.status(500).send('NAS failed');
+      return;
+    }
     res.status(200).send('OK');
   } catch (error) {
     console.error('Error', error);
