@@ -118,4 +118,4 @@ module.exports = async function handler(req, res) {
     console.error('Error:', error);
     res.status(500).send('Error');
   }
-};
+}
